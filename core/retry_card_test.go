@@ -150,7 +150,7 @@ func TestProcessInteractiveTurnWithRetry_RetryStaysInOneStreamingCard(t *testing
 	updates, finalized := p.cards[0].snapshot()
 	var noticed bool
 	for _, u := range updates {
-		if strings.Contains(u, "自动重试") && strings.Contains(u, "Retrying") {
+		if strings.Contains(u, "Automatic retry") && strings.Contains(u, "Retrying") {
 			noticed = true
 		}
 	}

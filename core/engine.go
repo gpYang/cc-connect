@@ -4157,6 +4157,7 @@ type interactiveRetryTurn struct {
 	kind           ErrorKind
 	err            error
 	promptContent  string
+	newTurn        bool
 	msgID          string
 	images         []ImageAttachment
 	files          []FileAttachment
@@ -4249,7 +4250,7 @@ func (e *Engine) processInteractiveTurnWithRetry(state *interactiveState, sessio
 		// when the error came from a queued message, the platform/replyCtx must
 		// be the queued message's, otherwise an error reply would reference the
 		// wrong parent message (see the replyCtx note in the queue handling).
-		if retryTurn != nil && retryTurn.promptContent != "" {
+		if retryTurn != nil && retryTurn.newTurn {
 			promptContent = retryTurn.promptContent
 			msgID = retryTurn.msgID
 			images = retryTurn.images
@@ -4257,6 +4258,7 @@ func (e *Engine) processInteractiveTurnWithRetry(state *interactiveState, sessio
 			replyCtx = retryTurn.replyCtx
 			logSessionKey = retryTurn.logSessionKey
 			contentLen = retryTurn.contentLen
+			attempt = 1
 		}
 
 		if retryTurn != nil && retryTurn.kind.IsRetriable() && (retryTurn.sawSideEffects || e.promptKeptOnError(state)) {
@@ -6169,12 +6171,12 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 			}
 
 		case EventText:
-			sawSideEffects = true
 			content := event.Content
 			if e.display.HideAgentFooter {
 				content = stripAgentFooterLines(content)
 			}
 			if content != "" && !isEllipsisOnly(content) {
+				sawSideEffects = true
 				// Pre-compute silentHold transition including this chunk so the
 				// rich-card path doesn't leak a preview that gets recalled at
 				// end-of-stream when the text resolves to bare NO_REPLY (Lark
@@ -6895,6 +6897,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				sawSideEffects = false // new attempt for the queued message
 				currentRetryTurn = &interactiveRetryTurn{
 					promptContent: queuedPrompt,
+					newTurn:       true,
 					msgID:         queued.messageID,
 					images:        queued.images,
 					files:         queued.files,
@@ -7056,7 +7059,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 						carry.toolCount++
 						carry.toolCalls = append(carry.toolCalls, cardToolEntry{
 							Index: carry.toolCount,
-							Name:  "自动重试",
+							Name:  e.i18n.T(MsgAutomaticRetry),
 							Input: notice,
 						})
 						_ = carry.streamCard.Update(e.ctx, buildCardContent(carry.thinking, carry.toolCalls, carry.answer))
@@ -7082,7 +7085,7 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 							}
 						}
 					}
-					if cp.AppendStructuredImmediate(ProgressCardEntry{Kind: ProgressEntryToolUse, Tool: "自动重试", Text: notice}, notice) {
+					if cp.AppendStructuredImmediate(ProgressCardEntry{Kind: ProgressEntryToolUse, Tool: e.i18n.T(MsgAutomaticRetry), Text: notice}, notice) {
 						return true
 					}
 					return sp.updateStatusFooter(CardStatusWorking, notice)

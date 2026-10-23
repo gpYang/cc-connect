@@ -521,11 +521,14 @@ func (cs *codexSession) handleEvent(raw map[string]any) {
 }
 
 func codexErrorKind(errorInfo string, message string) core.ErrorKind {
-	switch strings.TrimSpace(errorInfo) {
-	case "server_overloaded":
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(errorInfo), "_", "")) {
+	case "serveroverloaded":
 		return core.ErrorKindOverloaded
-	case "rate_limit_exceeded", "rate_limit":
+	case "ratelimitexceeded", "ratelimit":
 		return core.ErrorKindRateLimit
+	case "contextwindowexceeded", "sessionbudgetexceeded", "usagelimitexceeded",
+		"unauthorized", "badrequest", "cyberpolicy", "misalignmentpolicyviolation", "toomanydenials":
+		return core.ErrorKindUnknown
 	}
 
 	msg := strings.ToLower(message)

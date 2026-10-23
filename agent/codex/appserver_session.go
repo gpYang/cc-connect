@@ -67,13 +67,18 @@ type turnStartResponse struct {
 type turnNotification struct {
 	ThreadID string `json:"threadId"`
 	Turn     struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-		Error  *struct {
-			Message string `json:"message"`
-		} `json:"error"`
+		ID     string              `json:"id"`
+		Status string              `json:"status"`
+		Error  *appServerTurnError `json:"error"`
 	} `json:"turn"`
 }
+
+type appServerTurnError struct {
+	Message        string          `json:"message"`
+	CodexErrorInfo json.RawMessage `json:"codexErrorInfo"`
+}
+
+func (e *appServerTurnError) Error() string { return e.Message }
 
 type itemNotification struct {
 	ThreadID string         `json:"threadId"`
@@ -82,7 +87,10 @@ type itemNotification struct {
 }
 
 type errorNotification struct {
-	Message string `json:"message"`
+	TurnID    string              `json:"turnId"`
+	Message   string              `json:"message"`
+	Error     *appServerTurnError `json:"error"`
+	WillRetry bool                `json:"willRetry"`
 }
 
 type appServerRateLimitsResponse struct {
@@ -1160,14 +1168,13 @@ func (s *appServerSession) handleNotification(method string, paramsRaw json.RawM
 		var notif turnNotification
 		if err := json.Unmarshal(paramsRaw, &notif); err == nil {
 			if strings.EqualFold(strings.TrimSpace(notif.Turn.Status), "failed") || notif.Turn.Error != nil {
-				errMsg := ""
-				if notif.Turn.Error != nil {
-					errMsg = strings.TrimSpace(notif.Turn.Error.Message)
+				if notif.Turn.Error == nil {
+					notif.Turn.Error = &appServerTurnError{}
 				}
-				if errMsg == "" {
-					errMsg = "turn failed (no details)"
+				if strings.TrimSpace(notif.Turn.Error.Message) == "" {
+					notif.Turn.Error.Message = "turn failed (no details)"
 				}
-				s.failTurn(fmt.Errorf("%s", errMsg))
+				s.failTurn(notif.Turn.ID, notif.Turn.Error)
 			} else {
 				s.completeTurn()
 			}
@@ -1199,8 +1206,16 @@ func (s *appServerSession) handleNotification(method string, paramsRaw json.RawM
 
 	case "error":
 		var notif errorNotification
-		if err := json.Unmarshal(paramsRaw, &notif); err == nil && strings.TrimSpace(notif.Message) != "" {
-			s.emitError(fmt.Errorf("%s", notif.Message))
+		if err := json.Unmarshal(paramsRaw, &notif); err == nil {
+			// Let Codex finish its own retries before starting an engine retry.
+			if notif.WillRetry {
+				return
+			}
+			if notif.Error != nil {
+				s.failTurn(notif.TurnID, notif.Error)
+			} else if strings.TrimSpace(notif.Message) != "" {
+				s.emitError(fmt.Errorf("%s", notif.Message))
+			}
 		}
 	}
 }
@@ -1567,9 +1582,9 @@ func (s *appServerSession) completeTurn() {
 	s.emit(core.Event{Type: core.EventResult, SessionID: s.CurrentSessionID(), Done: true})
 }
 
-func (s *appServerSession) failTurn(err error) {
+func (s *appServerSession) failTurn(turnID string, err error) {
 	s.stateMu.Lock()
-	if s.currentTurn == "" {
+	if s.currentTurn == "" || (turnID != "" && turnID != s.currentTurn) {
 		s.stateMu.Unlock()
 		return
 	}
@@ -1617,7 +1632,16 @@ func (s *appServerSession) emitError(err error) {
 	if err == nil {
 		return
 	}
-	s.emit(core.Event{Type: core.EventError, Error: err})
+	var info string
+	var turnErr *appServerTurnError
+	kind := core.ErrorKindUnknown
+	if errors.As(err, &turnErr) {
+		// Structured variants can be objects; only the string variants name
+		// capacity/rate-limit errors. Other variants use the message fallback.
+		_ = json.Unmarshal(turnErr.CodexErrorInfo, &info)
+		kind = codexErrorKind(info, err.Error())
+	}
+	s.emit(core.Event{Type: core.EventError, Error: err, ErrorKind: kind})
 }
 
 func (s *appServerSession) rejectPending(err error) {

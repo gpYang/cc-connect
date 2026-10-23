@@ -217,6 +217,7 @@ const (
 	MsgToolAllowedNew            MsgKey = "tool_allowed_new"
 	MsgError                     MsgKey = "error"
 	MsgRetriableAgentError       MsgKey = "retriable_agent_error"
+	MsgAutomaticRetry            MsgKey = "automatic_retry"
 	MsgSessionNotFound           MsgKey = "session_not_found"
 	MsgFailedToStartAgentSession MsgKey = "failed_to_start_agent_session"
 	MsgFailedToDeleteSession     MsgKey = "failed_to_delete_session"
@@ -866,6 +867,13 @@ var messages = map[MsgKey]map[Language]string{
 		LangTraditionalChinese: "❌ 錯誤: %v",
 		LangJapanese:           "❌ エラー: %v",
 		LangSpanish:            "❌ Error: %v",
+	},
+	MsgAutomaticRetry: {
+		LangEnglish:            "Automatic retry",
+		LangChinese:            "自动重试",
+		LangTraditionalChinese: "自動重試",
+		LangJapanese:           "自動再試行",
+		LangSpanish:            "Reintento automático",
 	},
 	MsgRetriableAgentError: {
 		LangEnglish:            "⚠️ Upstream model is busy or rate-limited. Retrying in %s (retry %d/%d).",

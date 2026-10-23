@@ -178,6 +178,10 @@ func normalizeReasoningEffort(raw string) string {
 // failed turn, so a retriable error mid-turn is resumed rather than replayed.
 func (a *Agent) ContinueAfterErrorPrompt() string { return core.DefaultContinueAfterErrorPrompt }
 
+// PromptKeptOnRetriableError implements core.PromptKeptOnErrorAgent. Both
+// backends record the user input before a model turn can report an overload.
+func (a *Agent) PromptKeptOnRetriableError() bool { return true }
+
 func (a *Agent) Name() string { return "codex" }
 
 func (a *Agent) SetWorkDir(dir string) {
